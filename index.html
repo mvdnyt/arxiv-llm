@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>arXiv Research Assistant</title>
+    
+    <!-- PDF.js via CDN for client-side PDF text extraction -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    
+    <style>
+        /* --- ArXiv Academic Style / Vanilla CSS --- */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --header-bg: #f2f2f2;
+            --border-color: #cccccc;
+            --arxiv-red: #b31b1b;
+            --panel-bg: #f9f9f9;
+            --input-bg: #ffffff;
+            --chat-user-bg: #e6f2ff;
+            --chat-bot-bg: #f0f0f0;
+        }
+
+        body.dark-mode {
+            --bg-color: #121212;
+            --text-color: #e0e0e0;
+            --header-bg: #1e1e1e;
+            --border-color: #444444;
+            --arxiv-red: #ff6b6b;
+            --panel-bg: #1a1a1a;
+            --input-bg: #2a2a2a;
+            --chat-user-bg: #003366;
+            --chat-bot-bg: #222222;
+        }
+
+        body {
+            font-family: "Times New Roman", Times, serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        /* Header */
+        header {
+            background-color: var(--header-bg);
+            border-bottom: 2px solid var(--arxiv-red);
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+        }
+
+        .logo span.red {
+            color: var(--arxiv-red);
+        }
+        
+        .logo span.sub {
+            font-size: 14px;
+            font-weight: normal;
+            font-family: Arial, sans-serif;
+            color: var(--text-color);
+            opacity: 0.8;
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            font-family: Arial, sans-serif;
+            font-size: 13px;
+        }
+
+        .api-key-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        input[type="password"] {
+            border: none;
+            outline: none;
+            background: transparent;
+            color: var(--text-color);
+            width: 200px;
+            padding: 4px;
+            font-family: monospace;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: gray;
+            transition: all 0.3s ease;
+        }
+
+        .status-dot.active {
+            background-color: #00cc00;
+            box-shadow: 0 0 8px #00cc00;
+        }
+
+        button {
+            font-family: Arial, sans-serif;
+            background-color: var(--panel-bg);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            padding: 6px 12px;
+            cursor: pointer;
+            border-radius: 3px;
+            font-size: 13px;
+        }
+
+        button:hover {
+            background-color: var(--border-color);
+        }
+
+        /* Main Layout */
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            width: 280px;
+            background-color: var(--panel-bg);
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--border-color);
+        }
+
+        .sidebar.right {
+            width: 350px;
+            border-right: none;
+            border-left: 1px solid var(--border-color);
+        }
+
+        .panel-header {
+            padding: 10px;
+            font-weight: bold;
+            border-bottom: 1px dotted var(--border-color);
+            background-color: var(--header-bg);
+            font-family: Arial, sans-serif;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Left Sidebar: Documents */
+        .upload-section {
+            padding: 15px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .upload-section input[type="file"] {
+            display: none;
+        }
+
+        .upload-btn {
+            display: block;
+            width: 100%;
+            text-align: center;
+            background-color: var(--bg-color);
+            font-weight: bold;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+
+        #document-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            list-style: none;
+            margin: 0;
+        }
+
+        .doc-item {
+            padding: 8px;
+            margin-bottom: 5px;
+            border: 1px solid var(--border-color);
+            background-color: var(--bg-color);
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .doc-item:hover {
+            border-color: var(--arxiv-red);
+        }
+
+        .doc-item.active {
+            border-left: 4px solid var(--arxiv-red);
+            font-weight: bold;
+        }
+
+        .delete-btn {
+            background: none;
+            border: none;
+            color: var(--arxiv-red);
+            font-size: 16px;
+            padding: 0 5px;
+        }
+
+        /* Center Stage: PDF Viewer */
+        .center-stage {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--panel-bg);
+            position: relative;
+            overflow: hidden;
+        }
+
+        #pdf-container {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            padding: 20px;
+            overflow-y: auto;
+            height: 100%;
+            box-sizing: border-box;
+        }
+
+        .pdf-page-canvas {
+            max-width: 100%;
+            height: auto;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            background-color: white;
+        }
+
+        .empty-state {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: var(--border-color);
+            text-align: center;
+            font-family: Arial, sans-serif;
+        }
+
+        /* Right Sidebar: Chatbot */
+        #chat-history {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .chat-msg {
+            max-width: 85%;
+            padding: 10px 12px;
+            border-radius: 4px;
+            font-size: 15px;
+            line-height: 1.4;
+            border: 1px solid var(--border-color);
+        }
+
+        .chat-msg.user {
+            align-self: flex-end;
+            background-color: var(--chat-user-bg);
+            border-color: transparent;
+        }
+
+        .chat-msg.bot {
+            align-self: flex-start;
+            background-color: var(--chat-bot-bg);
+        }
+
+        .chat-msg.error {
+            color: var(--arxiv-red);
+            border-color: var(--arxiv-red);
+            background-color: transparent;
+        }
+
+        /* Simple Markdown bolding in chat */
+        .chat-msg strong {
+            font-family: Arial, sans-serif;
+        }
+
+        .chat-reference {
+            color: var(--arxiv-red);
+            font-weight: bold;
+            font-family: Arial, sans-serif;
+            background-color: rgba(179, 27, 27, 0.08);
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-size: 0.9em;
+            white-space: nowrap;
+        }
+
+        .chat-input-container {
+            padding: 15px;
+            border-top: 1px solid var(--border-color);
+            background-color: var(--bg-color);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 60px;
+            padding: 8px;
+            border: 1px solid var(--border-color);
+            background-color: var(--input-bg);
+            color: var(--text-color);
+            font-family: "Times New Roman", Times, serif;
+            font-size: 15px;
+            resize: none;
+            box-sizing: border-box;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: var(--arxiv-red);
+        }
+        
+        .loading {
+            font-style: italic;
+            opacity: 0.7;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <header>
+        <div class="logo">
+            <span class="red">arXiv</span> 
+            <span class="sub">> cs > notebook > abstract</span>
+        </div>
+        <div class="header-controls">
+            <div class="api-key-container">
+                <label for="api-key-input">Gemini Key:</label>
+                <input type="password" id="api-key-input" placeholder="Paste API Key here...">
+                <div id="api-status" class="status-dot" title="Red = Invalid, Green = Valid"></div>
+            </div>
+            <button id="theme-toggle">Toggle Dark Mode</button>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <div class="main-container">
+        
+        <!-- Left Sidebar: Document Management -->
+        <div class="sidebar">
+            <div class="panel-header">Sources & References</div>
+            <div class="upload-section">
+                <button class="upload-btn" onclick="document.getElementById('file-upload').click()">+ Upload PDF Documents</button>
+                <input type="file" id="file-upload" multiple accept=".pdf">
+            </div>
+            <ul id="document-list">
+                <!-- PDF items will be injected here -->
+            </ul>
+        </div>
+
+        <!-- Center Stage: PDF Display -->
+        <div class="center-stage">
+            <div id="empty-stage" class="empty-state">
+                <h2>No Document Selected</h2>
+                <p>Upload and select a PDF from the left panel to read.</p>
+            </div>
+            <div id="pdf-container"></div>
+        </div>
+
+        <!-- Right Sidebar: Chat / Analysis -->
+        <div class="sidebar right">
+            <div class="panel-header">Analysis Agent</div>
+            <div id="chat-history">
+                <div class="chat-msg bot">
+                    Welcome. I am your academic research assistant. Please provide your Gemini API key, upload your PDF papers, and ask questions regarding their contents.
+                </div>
+            </div>
+            <div class="chat-input-container">
+                <textarea id="chat-input" placeholder="Formulate your query here... (Press Enter to send)"></textarea>
+                <button id="send-btn" style="width: 100%; font-weight: bold;">Submit Query</button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Application Logic -->
+    <script>
+        // --- State Management ---
+        const state = {
+            apiKey: '',
+            isKeyValid: false,
+            pdfs: [], // { id, name, pdfDoc, textContent }
+            activePdfId: null,
+            isLoading: false,
+            currentlyRenderingId: null
+        };
+
+        // --- DOM Elements ---
+        const elements = {
+            themeToggle: document.getElementById('theme-toggle'),
+            apiKeyInput: document.getElementById('api-key-input'),
+            apiStatus: document.getElementById('api-status'),
+            fileUpload: document.getElementById('file-upload'),
+            documentList: document.getElementById('document-list'),
+            emptyStage: document.getElementById('empty-stage'),
+            pdfContainer: document.getElementById('pdf-container'),
+            chatHistory: document.getElementById('chat-history'),
+            chatInput: document.getElementById('chat-input'),
+            sendBtn: document.getElementById('send-btn')
+        };
+
+        // --- Initialization ---
+        function init() {
+            // Setup PDF.js worker
+            if (window.pdfjsLib) {
+                pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            }
+
+            // Event Listeners
+            elements.themeToggle.addEventListener('click', () => document.body.classList.toggle('dark-mode'));
+            
+            elements.apiKeyInput.addEventListener('input', (e) => {
+                state.apiKey = e.target.value.trim();
+                // Simple validation: Gemini keys are typically 39 chars
+                state.isKeyValid = state.apiKey.length > 30; 
+                if (state.isKeyValid) {
+                    elements.apiStatus.classList.add('active');
+                } else {
+                    elements.apiStatus.classList.remove('active');
+                }
+            });
+
+            elements.fileUpload.addEventListener('change', handleFileUpload);
+            elements.sendBtn.addEventListener('click', handleSendMessage);
+            elements.chatInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                }
+            });
+        }
+
+        // --- Document Handling ---
+        async function handleFileUpload(event) {
+            const files = Array.from(event.target.files);
+            if (!files.length) return;
+
+            // Optional: Show loading state on UI
+            const btn = document.querySelector('.upload-btn');
+            const originalText = btn.innerText;
+            btn.innerText = "Extracting text... Please wait.";
+            btn.disabled = true;
+
+            try {
+                for (const file of files) {
+                    if (file.type !== 'application/pdf') continue;
+
+                    const id = 'doc_' + Math.random().toString(36).substr(2, 9);
+                    
+                    // Extract text content and PDF document using PDF.js
+                    const { fullText, pdfDoc } = await extractPdfData(file);
+
+                    state.pdfs.push({
+                        id,
+                        name: file.name,
+                        pdfDoc,
+                        textContent: fullText
+                    });
+                }
+
+                // If this is the first doc, select it automatically
+                if (state.pdfs.length > 0 && !state.activePdfId) {
+                    setActiveDocument(state.pdfs[0].id);
+                }
+
+                renderDocumentList();
+            } catch (err) {
+                console.error(err);
+                alert("Failed to process PDF documents.");
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
+                elements.fileUpload.value = ''; // reset input
+            }
+        }
+
+        async function extractPdfData(file) {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            let fullText = '';
+
+            for (let i = 1; i <= pdfDoc.numPages; i++) {
+                const page = await pdfDoc.getPage(i);
+                const content = await page.getTextContent();
+                const strings = content.items.map(item => item.str);
+                // Append text with page markers for citation purposes
+                fullText += `\n[--- Page ${i} ---]\n${strings.join(' ')}\n`;
+            }
+            return { fullText, pdfDoc };
+        }
+
+        function renderDocumentList() {
+            elements.documentList.innerHTML = '';
+            
+            state.pdfs.forEach(pdf => {
+                const li = document.createElement('li');
+                li.className = `doc-item ${state.activePdfId === pdf.id ? 'active' : ''}`;
+                
+                const titleSpan = document.createElement('span');
+                titleSpan.textContent = pdf.name.length > 25 ? pdf.name.substring(0, 25) + '...' : pdf.name;
+                
+                const delBtn = document.createElement('button');
+                delBtn.className = 'delete-btn';
+                delBtn.innerHTML = '&times;';
+                delBtn.title = "Remove Document";
+                delBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    deleteDocument(pdf.id);
+                };
+
+                li.onclick = () => setActiveDocument(pdf.id);
+                
+                li.appendChild(titleSpan);
+                li.appendChild(delBtn);
+                elements.documentList.appendChild(li);
+            });
+        }
+
+        function setActiveDocument(id) {
+            state.activePdfId = id;
+            renderDocumentList(); // re-render to update active class
+
+            const doc = state.pdfs.find(p => p.id === id);
+            if (doc) {
+                renderPdfVisuals(doc);
+            } else {
+                elements.emptyStage.style.display = 'block';
+                elements.pdfContainer.style.display = 'none';
+            }
+        }
+
+        async function renderPdfVisuals(doc) {
+            elements.emptyStage.style.display = 'none';
+            elements.pdfContainer.style.display = 'flex';
+            elements.pdfContainer.innerHTML = ''; // clear existing pages
+
+            state.currentlyRenderingId = doc.id; // Keep track to avoid overlapping renders
+
+            try {
+                for (let i = 1; i <= doc.pdfDoc.numPages; i++) {
+                    // Abort if user switched to another document
+                    if (state.currentlyRenderingId !== doc.id) break;
+
+                    const page = await doc.pdfDoc.getPage(i);
+                    const viewport = page.getViewport({ scale: 1.5 }); // Crisp resolution
+
+                    const canvas = document.createElement('canvas');
+                    canvas.className = 'pdf-page-canvas';
+                    canvas.height = viewport.height;
+                    canvas.width = viewport.width;
+
+                    elements.pdfContainer.appendChild(canvas);
+
+                    // Render page to canvas
+                    await page.render({
+                        canvasContext: canvas.getContext('2d'),
+                        viewport: viewport
+                    }).promise;
+                }
+            } catch (err) {
+                console.error("Error rendering PDF visuals:", err);
+            }
+        }
+
+        function deleteDocument(id) {
+            state.pdfs = state.pdfs.filter(p => p.id !== id);
+            if (state.activePdfId === id) {
+                setActiveDocument(state.pdfs.length > 0 ? state.pdfs[0].id : null);
+            } else {
+                renderDocumentList();
+            }
+        }
+
+        // --- Chat & LLM Integration ---
+        function formatMarkdown(text) {
+            // Very simple parser for Bold and Newlines to keep strictly vanilla
+            let formatted = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            
+            // Highlight bracketed references e.g., [document.pdf, Page 1]
+            formatted = formatted.replace(/\[(.*?)\]/g, '<span class="chat-reference">[$1]</span>');
+            
+            formatted = formatted.replace(/\n/g, '<br>');
+            return formatted;
+        }
+
+        function appendMessage(role, text, isError = false) {
+            const div = document.createElement('div');
+            div.className = `chat-msg ${role} ${isError ? 'error' : ''}`;
+            div.innerHTML = formatMarkdown(text);
+            elements.chatHistory.appendChild(div);
+            // Auto scroll to bottom
+            elements.chatHistory.scrollTop = elements.chatHistory.scrollHeight;
+        }
+
+        async function handleSendMessage() {
+            const query = elements.chatInput.value.trim();
+            if (!query) return;
+
+            if (!state.isKeyValid) {
+                appendMessage('bot', 'Error: Please provide a valid Gemini API Key in the top right corner.', true);
+                return;
+            }
+
+            if (state.pdfs.length === 0) {
+                appendMessage('bot', 'Error: Please upload at least one PDF document before submitting a query.', true);
+                return;
+            }
+
+            // UI Updates
+            elements.chatInput.value = '';
+            appendMessage('user', query);
+            
+            // Show loading bubble
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'chat-msg bot loading';
+            loadingDiv.textContent = 'Synthesizing knowledge...';
+            elements.chatHistory.appendChild(loadingDiv);
+            elements.chatHistory.scrollTop = elements.chatHistory.scrollHeight;
+
+            try {
+                // Compile context from all PDFs
+                const contextString = state.pdfs.map(doc => 
+                    `=== DOCUMENT TITLE: ${doc.name} ===\n${doc.textContent}`
+                ).join('\n\n');
+
+                const systemInstruction = `You are a precise, academic research assistant designed to answer queries based strictly on the uploaded papers. 
+Format requirements:
+1. Base your answer ONLY on the provided text context. If the answer cannot be found, explicitly state "This information is not present in the provided documents."
+2. Provide academic-style citations for every factual claim. Append references at the end of sentences indicating the document title and page number (e.g., "...as shown in the methodology [paper_v2.pdf, Page 4].").
+3. Adopt an objective, scholarly tone.`;
+
+                const prompt = `<CONTEXT>\n${contextString}\n</CONTEXT>\n\n<USER_QUERY>\n${query}\n</USER_QUERY>`;
+
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${state.apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        systemInstruction: { parts: [{ text: systemInstruction }] },
+                        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                        generationConfig: { temperature: 0.1 } // low temp for factual academic responses
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.error) throw new Error(data.error.message);
+                
+                const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text || "No output generated.";
+                
+                // Remove loading and append result
+                loadingDiv.remove();
+                appendMessage('bot', replyText);
+
+            } catch (error) {
+                console.error(error);
+                loadingDiv.remove();
+                appendMessage('bot', `API Error: ${error.message}`, true);
+            }
+        }
+
+        // Bootstrap the app
+        window.onload = init;
+
+    </script>
+</body>
+</html>
